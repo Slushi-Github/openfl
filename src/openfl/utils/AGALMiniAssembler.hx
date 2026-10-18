@@ -249,11 +249,17 @@ class AGALMiniAssembler
 			var opCode:String = null;
 			var opFound:OpCode = null;
 
+			#if wiiu
+			opCode = line.substr(0, 3).toLowerCase();
+			opFound = OPMAP[opCode];
+			trace("[wiiu] AGAL opcode='" + opCode + "' found=" + (opFound != null) + " OPMAP=" + Lambda.count(OPMAP));
+			#else
 			if (reg3.match(line))
 			{
 				opCode = reg3.matched(0);
 				opFound = OPMAP[opCode];
 			}
+			#end
 
 			if (opFound == null)
 			{

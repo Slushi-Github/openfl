@@ -752,6 +752,10 @@ class OpenGLRenderer extends DisplayObjectRenderer
 
 	@:noCompletion private override function __render(object:IBitmapDrawable):Void
 	{
+		#if wiiu
+		lime.graphics.opengl.GL.bindVertexArray(__context3D.__vao);
+		#end
+
 		__context3D.setColorMask(true, true, true, true);
 		__context3D.setCulling(NONE);
 		__context3D.setDepthTest(false, ALWAYS);

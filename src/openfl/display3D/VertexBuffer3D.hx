@@ -61,6 +61,12 @@ class VertexBuffer3D
 	@:noCompletion private var __usage:Int;
 	@:noCompletion private var __vertexSize:Int;
 
+	#if wiiu
+	@:noCompletion private var __id2:GLBuffer;
+	@:noCompletion private var __allocatedBytes:Int = 0;
+	@:noCompletion private var __allocatedBytes2:Int = 0;
+	#end
+
 	@:noCompletion private function new(context3D:Context3D, numVertices:Int, dataPerVertex:Int, bufferUsage:String)
 	{
 		__context = context3D;
@@ -70,6 +76,9 @@ class VertexBuffer3D
 		var gl = __context.gl;
 
 		__id = gl.createBuffer();
+		#if wiiu
+		__id2 = gl.createBuffer();
+		#end
 		__stride = __vertexSize * 4;
 		__usage = (bufferUsage == Context3DBufferUsage.DYNAMIC_DRAW) ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
 	}
@@ -82,6 +91,9 @@ class VertexBuffer3D
 	{
 		var gl = __context.gl;
 		gl.deleteBuffer(__id);
+		#if wiiu
+		if (__id2 != null) gl.deleteBuffer(__id2);
+		#end
 	}
 
 	/**
@@ -128,8 +140,28 @@ class VertexBuffer3D
 		if (data == null) return;
 		var gl = __context.gl;
 
+		#if wiiu
+		var tmp = __id;
+		__id = __id2;
+		__id2 = tmp;
+		var tmpBytes = __allocatedBytes;
+		__allocatedBytes = __allocatedBytes2;
+		__allocatedBytes2 = tmpBytes;
+
+		__context.__bindGLArrayBuffer(__id);
+		if (data.byteLength == __allocatedBytes)
+		{
+			gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+		}
+		else
+		{
+			gl.bufferData(gl.ARRAY_BUFFER, data, __usage);
+			__allocatedBytes = data.byteLength;
+		}
+		#else
 		__context.__bindGLArrayBuffer(__id);
 		gl.bufferData(gl.ARRAY_BUFFER, data, __usage);
+		#end
 	}
 
 	/**

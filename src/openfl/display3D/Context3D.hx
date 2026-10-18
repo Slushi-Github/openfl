@@ -283,6 +283,10 @@ import lime.math.Vector2;
 	@:noCompletion private var __state:Context3DState;
 	@:noCompletion private var __vertexConstants:Float32Array;
 
+	#if wiiu
+	@:noCompletion private var __vao:lime.graphics.opengl.GLVertexArrayObject;
+	#end
+
 	@:noCompletion private function new(stage:Stage, contextState:Context3DState = null, stage3D:Stage3D = null)
 	{
 		super();
@@ -297,6 +301,11 @@ import lime.math.Vector2;
 		gl = GL.context;
 		#else
 		gl = __context.webgl;
+		#end
+
+		#if wiiu
+		__vao = GL.createVertexArray();
+		GL.bindVertexArray(__vao);
 		#end
 
 		if (__contextState == null) __contextState = new Context3DState();
@@ -349,6 +358,8 @@ import lime.math.Vector2;
 		{
 			#if (js && html5)
 			__glDepthStencil = gl.DEPTH_STENCIL;
+			#elseif wiiu
+			__glDepthStencil = 0x88F0; // GL_DEPTH24_STENCIL8
 			#else
 			if (__context.type == OPENGLES && Std.parseFloat(__context.version) >= 3)
 			{
@@ -1256,6 +1267,11 @@ import lime.math.Vector2;
 
 		__bindGLElementArrayBuffer(indexBuffer.__id);
 		gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, firstIndex * 2);
+
+		#if wiiu
+		var err = gl.getError();
+		if (err != 0) trace("[GL] error 0x" + StringTools.hex(err) + " after draw");
+		#end
 	}
 
 	/**
@@ -2396,7 +2412,7 @@ import lime.math.Vector2;
 					__bindGLTextureCubeMap(texture.__getTexture());
 				}
 
-				#if (desktop && !html5)
+				#if (desktop && !html5 && !wiiu)
 				// TODO: Cache?
 				gl.enable(gl.TEXTURE_2D);
 				#end
@@ -2442,7 +2458,7 @@ import lime.math.Vector2;
 					texture.__alphaTexture.__setSamplerState(samplerState);
 					gl.uniform1i(__state.program.__agalAlphaSamplerEnabled[i].location, 1);
 
-					#if (desktop && !html5)
+					#if (desktop && !html5 && !wiiu)
 					// TODO: Cache?
 					gl.enable(gl.TEXTURE_2D);
 					#end

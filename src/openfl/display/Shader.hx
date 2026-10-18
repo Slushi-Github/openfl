@@ -233,6 +233,51 @@ class Shader
 	@:noCompletion private var __texture:ShaderInput<BitmapData>;
 	@:noCompletion private var __textureSize:ShaderParameter<Float>;
 
+	#if wiiu
+	@:noCompletion private static var __wiiuAttribLoc:Map<String, Int> = [
+		"openfl_Position" => 0,
+		"openfl_TextureCoord" => 1,
+	];
+
+	/**
+	 * Converts GLSL source to GLSL 3.3, as required by gx2gl
+	 */
+	@:noCompletion private static function __toGLSL330(src:String, isVertex:Bool, swizzle:Bool = true):String
+	{
+		src = ~/^[ \t]*#version[^\n]*\n?/gm.replace(src, "");
+		if (isVertex)
+		{
+			src = ~/\btexture2D\b/g.replace(src, "texture");
+
+			src = ~/attribute\s+float\s+openfl_Alpha\s*;/.replace(src, "const float openfl_Alpha = 1.0;");
+			src = ~/attribute\s+vec4\s+openfl_ColorMultiplier\s*;/.replace(src, "const vec4 openfl_ColorMultiplier = vec4(1.0);");
+			src = ~/attribute\s+vec4\s+openfl_ColorOffset\s*;/.replace(src, "const vec4 openfl_ColorOffset = vec4(0.0);");
+
+			src = ~/\battribute\s+(\w+)\s+(\w+)/g.map(src, function(e)
+			{
+				var name = e.matched(2);
+				var loc = __wiiuAttribLoc.get(name);
+				return (loc != null ? "layout(location = " + loc + ") " : "") + "in " + e.matched(1) + " " + name;
+			});
+			src = ~/\bvarying\b/g.replace(src, "out");
+			return "#version 330 core\n" + src;
+		}
+
+		src = ~/\btexture2D\b/g.replace(src, "openfl_sample");
+		src = ~/\bvarying\b/g.replace(src, "in");
+		src = ~/\bgl_FragColor\b/g.replace(src, "openfl_FragColor");
+		return "#version 330 core\n"
+			+ "#define openfl_sample(s, c) " + (swizzle ? "texture(s, c).bgra" : "texture(s, c)") + "\n"
+			+ "layout(location = 0) out vec4 openfl_FragColor;\n"
+			+ src;
+	}
+
+	@:noCompletion private static function __wiiuAttribsToUniforms(src:String):String
+	{
+		return ~/\battribute(\s+\w+\s+(?:openfl_Alpha|openfl_ColorMultiplier|openfl_ColorOffset)\b)/g.replace(src, "uniform$1");
+	}
+	#end
+
 	#if openfljs
 	@:noCompletion private static function __init__()
 	{
@@ -325,7 +370,17 @@ class Shader
 		gl.compileShader(shader);
 		var shaderInfoLog = gl.getShaderInfoLog(shader);
 		var hasInfoLog = shaderInfoLog != null && StringTools.trim(shaderInfoLog) != "";
-		var compileStatus = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+		var compileStatus:Int = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+
+		#if wiiu
+		trace("[wiiu] shader "
+			+ (type == gl.VERTEX_SHADER ? "VERTEX" : "FRAGMENT")
+			+ " compileStatus="
+			+ compileStatus
+			+ " log="
+			+ shaderInfoLog);
+		if (compileStatus == 0) trace(source);
+		#end
 
 		if (hasInfoLog || compileStatus == 0)
 		{
@@ -362,6 +417,10 @@ class Shader
 		gl.attachShader(program, vertexShader);
 		gl.attachShader(program, fragmentShader);
 		gl.linkProgram(program);
+
+		#if wiiu
+		trace("[wiiu] link status=" + gl.getProgramParameter(program, gl.LINK_STATUS) + " log=" + gl.getProgramInfoLog(program));
+		#end
 
 		if (gl.getProgramParameter(program, gl.LINK_STATUS) == 0)
 		{
@@ -411,7 +470,7 @@ class Shader
 
 		__context.__bindGLArrayBuffer(null);
 
-		#if lime
+		#if (lime && !wiiu)
 		if (__context.__context.type == OPENGL)
 		{
 			gl.disable(gl.TEXTURE_2D);
@@ -441,7 +500,7 @@ class Shader
 			textureCount++;
 		}
 
-		#if lime
+		#if (lime && !wiiu)
 		if (__context.__context.type == OPENGL && textureCount > 0)
 		{
 			gl.enable(gl.TEXTURE_2D);
@@ -464,6 +523,12 @@ class Shader
 
 	@:noCompletion private function __initGL():Void
 	{
+		#if wiiu
+		var vSource = __wiiuAttribsToUniforms(glVertexSource);
+		#else
+		var vSource = glVertexSource;
+		#end
+
 		if (__glSourceDirty || __paramBool == null)
 		{
 			__glSourceDirty = false;
@@ -474,8 +539,8 @@ class Shader
 			__paramFloat = new Array();
 			__paramInt = new Array();
 
-			__processGLData(glVertexSource, "attribute");
-			__processGLData(glVertexSource, "uniform");
+			__processGLData(vSource, "attribute");
+			__processGLData(vSource, "uniform");
 			__processGLData(glFragmentSource, "uniform");
 		}
 
@@ -495,8 +560,13 @@ class Shader
 				+ "#endif\n\n";
 			#end
 
+			#if wiiu
+			var vertex = __toGLSL330(prefix + vSource, true);
+			var fragment = __toGLSL330(prefix + glFragmentSource, false);
+			#else
 			var vertex = prefix + glVertexSource;
 			var fragment = prefix + glFragmentSource;
+			#end
 
 			var id = vertex + fragment;
 
@@ -566,6 +636,11 @@ class Shader
 						parameter.index = gl.getAttribLocation(glProgram, parameter.name);
 					}
 				}
+
+				#if wiiu
+				if (__alpha != null) trace("[wiiu] openfl_Alpha uniform=" + __alpha.__isUniform + " index=" + __alpha.index);
+				if (__matrix != null) trace("[wiiu] openfl_Matrix index=" + __matrix.index);
+				#end
 			}
 		}
 	}

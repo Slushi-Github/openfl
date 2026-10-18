@@ -175,6 +175,12 @@ class TextureBase extends EventDispatcher
 				}
 			}
 
+			#if wiiu
+			var st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+			trace("[wiiu] FBO status=0x" + StringTools.hex(st) + " " + __width + "x" + __height + " depthStencil=" + enableDepthAndStencil
+				+ " glDepthStencil=" + Context3D.__glDepthStencil);
+			#end
+
 			gl.bindRenderbuffer(gl.RENDERBUFFER, null);
 		}
 
@@ -272,6 +278,12 @@ class TextureBase extends EventDispatcher
 			__supportsBGRA = false;
 			__textureFormat = gl.RGBA;
 		}
+
+		#if wiiu
+		__supportsBGRA = false;
+		__textureFormat = gl.RGBA;
+		__textureInternalFormat = 0x8058; // GL_RGBA8, como en tu renderer
+		#end
 
 		__compressedFormats = new Map();
 		__compressedFormatsAlpha = new Map();

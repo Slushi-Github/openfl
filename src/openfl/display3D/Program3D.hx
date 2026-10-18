@@ -13,6 +13,7 @@ import openfl.display.ShaderParameterType;
 import openfl.errors.IllegalOperationError;
 import openfl.utils.ByteArray;
 import openfl.Vector;
+import openfl.display.Shader;
 #if lime
 import lime.graphics.opengl.GL;
 import lime.utils.BytePointer;
@@ -53,6 +54,7 @@ import lime.utils.BytePointer;
 @:access(openfl.display.ShaderInput)
 @:access(openfl.display.ShaderParameter)
 @:access(openfl.display.Stage)
+@:access(openfl.display.Shader)
 @:final class Program3D
 {
 	@:noCompletion private var __agalAlphaSamplerEnabled:Array<Uniform>;
@@ -889,6 +891,13 @@ import lime.utils.BytePointer;
 	@:noCompletion private function __uploadFromGLSL(vertexShaderSource:String, fragmentShaderSource:String):Void
 	{
 		var gl = __context.gl;
+
+		#if wiiu
+		vertexShaderSource = Shader.__toGLSL330(vertexShaderSource, true, false);
+		fragmentShaderSource = Shader.__toGLSL330(fragmentShaderSource, false, false);
+		trace("[wiiu] AGAL vertex:\n" + vertexShaderSource);
+		trace("[wiiu] AGAL fragment:\n" + fragmentShaderSource);
+		#end
 
 		__glVertexSource = vertexShaderSource;
 		__glFragmentSource = fragmentShaderSource;
