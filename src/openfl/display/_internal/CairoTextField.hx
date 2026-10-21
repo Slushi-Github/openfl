@@ -115,10 +115,7 @@ class CairoTextField
 
 		if (cairo != null)
 		{
-			// var surface:CairoImageSurface = cast cairo.target;
-			var surface = graphics.__bitmap.getSurface();
-
-			if (graphics.__softwareDirty && (width > surface.width || height > surface.height))
+			if (graphics.__softwareDirty && (width > graphics.__bitmap.width || height > graphics.__bitmap.height))
 			{
 				needsUpscaling = true;
 			}
@@ -168,17 +165,142 @@ class CairoTextField
 		}
 		else
 		{
+			#if wiiu
+			graphics.__bitmap.fillRect(graphics.__bitmap.rect, 0x00000000);
+			#else
 			cairo.identityMatrix();
 			cairo.resetClip();
 
 			cairo.setOperator(CLEAR);
 			cairo.paint();
 			cairo.setOperator(OVER);
+			#end
 		}
 
 		graphics.__bitmapScaleX = pixelRatio;
 		graphics.__bitmapScaleY = pixelRatio;
 
+		#if wiiu
+		// On Wii U we render the text directly to the bitmap, so we don't need to render it to a surface with Cairo.
+		{
+			var bmp = graphics.__bitmap;
+
+			var bw = Std.int(bounds.width);
+			var bh = Std.int(bounds.height);
+
+			if (textEngine.background)
+			{
+				bmp.fillRect(new Rectangle(0, 0, bw, bh), 0xFF000000 | textEngine.backgroundColor);
+			}
+
+			if (textEngine.border)
+			{
+				var bc = 0xFF000000 | textEngine.borderColor;
+				bmp.fillRect(new Rectangle(0, 0, bw, 1), bc);
+				bmp.fillRect(new Rectangle(0, bh - 1, bw, 1), bc);
+				bmp.fillRect(new Rectangle(0, 0, 1, bh), bc);
+				bmp.fillRect(new Rectangle(bw - 1, 0, 1, bh), bc);
+			}
+
+			if (textEngine.text != null && textEngine.text != "")
+			{
+				var scrollX = -textField.scrollH;
+				var scrollY = 0.0;
+
+				for (i in 0...textField.scrollV - 1)
+				{
+					scrollY -= textEngine.lineHeights[i];
+				}
+
+				for (group in textEngine.layoutGroups)
+				{
+					if (group.lineIndex < textField.scrollV - 1) continue;
+					if (group.lineIndex > textEngine.bottomScrollV - 1) break;
+
+					var font = TextEngine.getFontInstance(group.format);
+
+					if (font == null || group.format.size == null) continue;
+
+					var size = Std.int(group.format.size);
+					var color = group.format.color;
+					var cr = (color >> 16) & 0xFF;
+					var cg = (color >> 8) & 0xFF;
+					var cb = color & 0xFF;
+
+					var penX:Float = group.offsetX + scrollX - bounds.x;
+					var penY:Float = group.offsetY + group.ascent + scrollY - bounds.y;
+
+					for (position in group.positions)
+					{
+						if (position == null) continue;
+
+						if (position.glyph != 0)
+						{
+							var gi = null;
+							try
+							{
+								gi = font.renderGlyph(position.glyph, size, 72);
+							}
+							catch (e:Dynamic)
+							{
+								trace("renderGlyph ERROR: " + Std.string(e) + "\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack()));
+							}
+
+							if (gi != null && gi.buffer != null)
+							{
+								var gx = Std.int(Math.round(penX + position.offset.x)) + Std.int(gi.x);
+								var gy = Std.int(Math.round(penY - position.offset.y)) - Std.int(gi.y);
+								var gd = gi.buffer.data;
+								var bpp = Std.int(gi.buffer.bitsPerPixel / 8);
+								if (bpp < 1) bpp = 1;
+								var stride = gi.width * bpp;
+								var glen = (gd != null) ? gd.length : 0;
+
+								if (gd != null)
+								{
+									for (yy in 0...gi.height)
+									{
+										var py = gy + yy;
+										if (py < 0 || py >= bmp.height) continue;
+
+										for (xx in 0...gi.width)
+										{
+											var px = gx + xx;
+											if (px < 0 || px >= bmp.width) continue;
+
+											var idx = yy * stride + xx * bpp;
+											if (idx + bpp > glen) continue;
+
+											var a = gd[idx];
+											if (bpp > 1)
+											{
+												for (q in 1...bpp)
+													if (gd[idx + q] > a) a = gd[idx + q];
+											}
+
+											if (a == 0) continue;
+
+											var dst = bmp.getPixel32(px, py);
+											var da = (dst >>> 24) & 0xFF;
+											var inv = 255 - a;
+											var oa = a + Std.int(da * inv / 255);
+											var or = Std.int((cr * a + ((dst >> 16) & 0xFF) * da * inv / 255) / oa);
+											var og = Std.int((cg * a + ((dst >> 8) & 0xFF) * da * inv / 255) / oa);
+											var ob = Std.int((cb * a + (dst & 0xFF) * da * inv / 255) / oa);
+											bmp.setPixel32(px, py, (oa << 24) | (or << 16) | (og << 8) | ob);
+										}
+									}
+								}
+							}
+						}
+
+						penX += position.advance.x;
+						penY -= position.advance.y;
+					}
+				}
+			}
+		}
+		#else
 		var options = new CairoFontOptions();
 
 		if (textEngine.antiAliasType == ADVANCED && textEngine.sharpness == 400)
@@ -512,6 +634,7 @@ class CairoTextField
 			cairo.stroke();
 			cairo.closePath();
 		}
+		#end
 
 		graphics.__bitmap.image.dirty = true;
 		graphics.__bitmap.image.version++;

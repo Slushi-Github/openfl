@@ -131,6 +131,13 @@ class TextLayout
 		#end
 	}
 
+	#if wiiu
+	@:noCompletion private inline function __swap32(v:Int):Int
+	{
+		return untyped __cpp__("__builtin_bswap32({0})", v);
+	}
+	#end
+
 	@:noCompletion private function __position():Void
 	{
 		positions = [];
@@ -141,33 +148,22 @@ class TextLayout
 			if (__buffer == null)
 			{
 				__buffer = Bytes.alloc(text.length * 5);
-				// __buffer.endian = (System.endianness == BIG_ENDIAN ? "bigEndian" : "littleEndian");
 			}
 
-			// if the Font has changed, or the size used when creating the
-			// HBFTFont has changed, we need to create a new HBFTFont
 			if (__font != font || __hbFontSize != size)
 			{
 				__font = font;
-				// 	hb_font_destroy ((hb_font_t*)mHBFont);
 				@:privateAccess font.__setSize(size);
 				__hbFont = new HBFTFont(font);
 				__hbFontSize = size;
 
 				if (autoHint)
 				{
-					// TODO: Investigate FreeType hinting used in HB. The FT_LOAD_FORCE_AUTOHINT
-					// flag caused glyph spacing inconsistencies on certain fonts. Is it necessary to have
-					// enabled in certain cases?
-					__hbFont.loadFlags = /*FT_LOAD_FORCE_AUTOHINT |*/ FT_LOAD_TARGET_LIGHT;
+					__hbFont.loadFlags = FT_LOAD_TARGET_LIGHT;
 				}
 			}
 			else
 			{
-				// a Font may be shared by multiple TextLayouts, each rendering
-				// with different sizes, so the size may have been changed by
-				// another TextLayout since this method was last called. we can
-				// simply restore our size, though.
 				@:privateAccess font.__setSize(size);
 			}
 
@@ -198,7 +194,6 @@ class TextLayout
 			__hbBuffer.addUTF16(untyped __cpp__('(uintptr_t){0}', text.wc_str()), text.length, 0, -1);
 			#end
 			#else
-			// if haxe3
 			#if hl
 			__hbBuffer.addUTF16(text, text.length, 0, -1);
 			#else
@@ -224,10 +219,18 @@ class TextLayout
 					info = _info[i];
 					position = _positions[i];
 
+					#if wiiu
+					// Haxe Bytes are little endian, so we need to swap the endianness of the values
+					info.codepoint = __swap32(info.codepoint);
+					info.cluster = __swap32(info.cluster);
+					position.xAdvance = __swap32(position.xAdvance);
+					position.yAdvance = __swap32(position.yAdvance);
+					position.xOffset = __swap32(position.xOffset);
+					position.yOffset = __swap32(position.yOffset);
+					#end
+
 					for (j in lastCluster + 1...info.cluster)
 					{
-						// TODO: Handle differently?
-
 						positions.push(new GlyphPosition(0, new Vector2(0, 0), new Vector2(0, 0)));
 					}
 
