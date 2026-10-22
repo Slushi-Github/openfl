@@ -234,6 +234,8 @@ class Shader
 	@:noCompletion private var __textureSize:ShaderParameter<Float>;
 
 	#if wiiu
+	@:noCompletion private static var __wiiuStreamedAttribs:Bool = false;
+
 	@:noCompletion private static var __wiiuAttribLoc:Map<String, Int> = [
 		"openfl_Position" => 0,
 		"openfl_TextureCoord" => 1,
@@ -253,10 +255,12 @@ class Shader
 			src = ~/attribute\s+vec4\s+openfl_ColorMultiplier\s*;/.replace(src, "const vec4 openfl_ColorMultiplier = vec4(1.0);");
 			src = ~/attribute\s+vec4\s+openfl_ColorOffset\s*;/.replace(src, "const vec4 openfl_ColorOffset = vec4(0.0);");
 
+			var nextLoc = 2;
 			src = ~/\battribute\s+(\w+)\s+(\w+)/g.map(src, function(e)
 			{
 				var name = e.matched(2);
 				var loc = __wiiuAttribLoc.get(name);
+				if (loc == null) loc = nextLoc++;
 				return (loc != null ? "layout(location = " + loc + ") " : "") + "in " + e.matched(1) + " " + name;
 			});
 			src = ~/\bvarying\b/g.replace(src, "out");
@@ -372,16 +376,6 @@ class Shader
 		var hasInfoLog = shaderInfoLog != null && StringTools.trim(shaderInfoLog) != "";
 		var compileStatus:Int = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
 
-		#if wiiu
-		trace("[wiiu] shader "
-			+ (type == gl.VERTEX_SHADER ? "VERTEX" : "FRAGMENT")
-			+ " compileStatus="
-			+ compileStatus
-			+ " log="
-			+ shaderInfoLog);
-		if (compileStatus == 0) trace(source);
-		#end
-
 		if (hasInfoLog || compileStatus == 0)
 		{
 			var message = (compileStatus == 0) ? "Error" : "Info";
@@ -417,10 +411,6 @@ class Shader
 		gl.attachShader(program, vertexShader);
 		gl.attachShader(program, fragmentShader);
 		gl.linkProgram(program);
-
-		#if wiiu
-		trace("[wiiu] link status=" + gl.getProgramParameter(program, gl.LINK_STATUS) + " log=" + gl.getProgramInfoLog(program));
-		#end
 
 		if (gl.getProgramParameter(program, gl.LINK_STATUS) == 0)
 		{
@@ -636,11 +626,6 @@ class Shader
 						parameter.index = gl.getAttribLocation(glProgram, parameter.name);
 					}
 				}
-
-				#if wiiu
-				if (__alpha != null) trace("[wiiu] openfl_Alpha uniform=" + __alpha.__isUniform + " index=" + __alpha.index);
-				if (__matrix != null) trace("[wiiu] openfl_Matrix index=" + __matrix.index);
-				#end
 			}
 		}
 	}
@@ -873,7 +858,7 @@ class Shader
 
 		var gl = __context.gl;
 
-		if (shaderBuffer.paramDataLength > 0)
+		if (shaderBuffer.paramDataLength > 0 #if wiiu && !__wiiuStreamedAttribs #end)
 		{
 			if (shaderBuffer.paramDataBuffer == null)
 			{
@@ -940,6 +925,14 @@ class Shader
 			else if (i < boolCount + floatCount)
 			{
 				floatRef = shaderBuffer.paramRefs_Float[floatIndex];
+
+				#if wiiu
+				if (__wiiuStreamedAttribs && !floatRef.__isUniform && !floatRef.__internal)
+				{
+					floatIndex++;
+					continue;
+				}
+				#end
 
 				for (j in 0...shaderBuffer.overrideFloatCount)
 				{

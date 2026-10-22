@@ -20,6 +20,10 @@ import openfl.display._internal.stats.Context3DStats;
 import openfl.display._internal.stats.DrawCallContext;
 #end
 
+#if wiiu
+import openfl.display3D.Context3DVertexBufferFormat;
+#end
+
 #if !openfl_debug
 @:fileXml('tags="haxe,release"')
 @:noDebug
@@ -31,6 +35,9 @@ import openfl.display._internal.stats.DrawCallContext;
 @:access(openfl.geom.ColorTransform)
 @:access(openfl.geom.Matrix)
 @:access(openfl.geom.Rectangle)
+#if wiiu
+@:access(openfl.display.ShaderParameter)
+#end
 @SuppressWarnings("checkstyle:FieldDocComment")
 class Context3DGraphics
 {
@@ -42,6 +49,10 @@ class Context3DGraphics
 	private static var tempUvtVector:Vector<Float> = new Vector<Float>();
 	private static var tempScale9VerticesVector:Vector<Float>;
 	private static var tempRects:Array<Rectangle> = [];
+
+	#if wiiu
+	private static var streamShaderBuffer:ShaderBuffer = null;
+	#end
 
 	private static function buildBuffer(graphics:Graphics, renderer:OpenGLRenderer):Void
 	{
@@ -399,6 +410,7 @@ class Context3DGraphics
 						vertexBufferData[vertexOffset + (dataPerVertex * 3) + 2] = uvWidth;
 						vertexBufferData[vertexOffset + (dataPerVertex * 3) + 3] = uvHeight;
 					}
+					
 
 					quadBufferPosition += length;
 
@@ -495,6 +507,9 @@ class Context3DGraphics
 		if (quadBufferPosition > 0)
 		{
 			graphics.__quadBuffer.flushVertexBufferData();
+			#if wiiu
+			graphics.__quadBuffer.flushStreams();
+			#end
 		}
 
 		if (triangleIndexBufferPosition > 0)
@@ -621,6 +636,10 @@ class Context3DGraphics
 					data.skip(type);
 
 				case BEGIN_SHADER_FILL:
+					#if wiiu
+					var c = data.readBeginShaderFill();
+					streamShaderBuffer = c.shaderBuffer;
+					#end
 					hasBitmapFill = false;
 					hasColorFill = false;
 					hasShaderFill = true;
@@ -925,6 +944,9 @@ class Context3DGraphics
 					switch (type)
 					{
 						case BEGIN_BITMAP_FILL:
+							#if wiiu
+							streamShaderBuffer = null;
+							#end
 							var c = data.readBeginBitmapFill();
 							bitmap = c.bitmap;
 							bitmapMatrix = c.matrix;
@@ -934,6 +956,9 @@ class Context3DGraphics
 							fill = null;
 
 						case BEGIN_GRADIENT_FILL:
+							#if wiiu
+							streamShaderBuffer = null;
+							#end
 							// not implemented yet, but we don't want to keep
 							// the previous fill either.
 							data.skip(type);
@@ -944,6 +969,9 @@ class Context3DGraphics
 							bitmapMatrix = null;
 
 						case BEGIN_FILL:
+							#if wiiu
+							streamShaderBuffer = null;
+							#end
 							var c = data.readBeginFill();
 							var color = Std.int(c.color);
 							var alpha = Std.int(c.alpha * 0xFF);
@@ -993,6 +1021,9 @@ class Context3DGraphics
 								if (shaderBuffer != null && !maskRender)
 								{
 									shader = renderer.__initShaderBuffer(shaderBuffer);
+									#if wiiu
+									streamShaderBuffer = shaderBuffer;
+									#end
 
 									renderer.__setShaderBuffer(shaderBuffer);
 									renderer.applyMatrix(uMatrix);
@@ -1041,15 +1072,113 @@ class Context3DGraphics
 
 									if (shaderBuffer != null && !maskRender)
 									{
+										#if wiiu
+										Shader.__wiiuStreamedAttribs = true;
+										#end
 										renderer.__updateShaderBuffer(shaderBufferOffset);
+										#if wiiu
+										Shader.__wiiuStreamedAttribs = false;
+										#end
 									}
 
-									if (shader.__position != null) context.setVertexBufferAt(shader.__position.index, graphics.__quadBuffer.vertexBuffer,
-										quadBufferPosition * 16, FLOAT_2);
-									if (shader.__textureCoord != null) context.setVertexBufferAt(shader.__textureCoord.index,
-										graphics.__quadBuffer.vertexBuffer, (quadBufferPosition * 16) + 2, FLOAT_2);
+									#if wiiu
+									var activeSB = (streamShaderBuffer != null) ? streamShaderBuffer : shaderBuffer;
 
-									context.drawTriangles(context.__quadIndexBuffer, 0, length * 2);
+									if (graphics.__quadBuffer != null
+										&& graphics.__quadBuffer.attribStreams != null
+										&& activeSB != null
+										&& activeSB.shader != null
+										&& activeSB.shader.__paramFloat != null)
+									{
+										var sb = activeSB;
+										var floatParams = sb.shader.__paramFloat;
+										var totalVertices = (quadBufferPosition + length) * 4;
+
+										for (k in 0...floatParams.length)
+										{
+											var p = floatParams[k];
+											if (p == null || p.__isUniform || p.__internal) continue;
+
+											trace("Parámetro flotante detectado: " + p.name + " (longitud: " + p.__length + ")");
+
+											var size = p.__length;
+											var stream = graphics.__quadBuffer.ensureStream(p.name, size, totalVertices);
+											if (stream == null || stream.data == null) continue;
+
+											var sData = stream.data;
+											var pIndex = sb.paramBoolCount + k;
+											var pLen = sb.paramLengths[pIndex];
+											var pPos = sb.paramPositions[pIndex];
+											var base = quadBufferPosition * 4 * size;
+											var n = length * 4 * size;
+
+											if (pLen >= n)
+											{
+												for (i in 0...n)
+													sData[base + i] = sb.paramData[pPos + i];
+											}
+											else if (pLen == size)
+											{
+												for (i in 0...n)
+													sData[base + i] = sb.paramData[pPos + (i % size)];
+											}
+											else
+											{
+												for (i in 0...n)
+													sData[base + i] = 0;
+											}
+										}
+									}
+									#end
+
+									#if wiiu
+									var useFirstIndex = (quadBufferPosition + length) <= context.__quadIndexBufferElements;
+									var ptrBase = useFirstIndex ? 0 : quadBufferPosition * 16;
+									var firstIndex = useFirstIndex ? quadBufferPosition * 6 : 0;
+									#else
+									var ptrBase = quadBufferPosition * 16;
+									var firstIndex = 0;
+									#end
+
+									if (shader.__position != null) context.setVertexBufferAt(shader.__position.index, graphics.__quadBuffer.vertexBuffer,
+										ptrBase, FLOAT_2);
+									if (shader.__textureCoord != null) context.setVertexBufferAt(shader.__textureCoord.index,
+										graphics.__quadBuffer.vertexBuffer, ptrBase + 2, FLOAT_2);
+
+									#if wiiu
+									if (graphics.__quadBuffer != null
+										&& graphics.__quadBuffer.attribStreams != null
+										&& shaderBuffer != null
+										&& shaderBuffer.shader != null
+										&& shaderBuffer.shader.__paramFloat != null
+										&& !maskRender)
+									{
+										var fParams = shaderBuffer.shader.__paramFloat;
+										for (k in 0...fParams.length)
+										{
+											var p = fParams[k];
+											if (p == null || p.__isUniform || p.__internal) continue;
+
+											var idx:Int = p.index;
+											if (idx < 0) continue;
+
+											var stream = graphics.__quadBuffer.attribStreams.get(p.name);
+											if (stream == null || stream.buffer == null) continue;
+
+											var fmt = switch (p.__length)
+											{
+												case 1: Context3DVertexBufferFormat.FLOAT_1;
+												case 2: Context3DVertexBufferFormat.FLOAT_2;
+												case 3: Context3DVertexBufferFormat.FLOAT_3;
+												default: Context3DVertexBufferFormat.FLOAT_4;
+											};
+
+											context.setVertexBufferAt(idx, stream.buffer, useFirstIndex ? 0 : quadBufferPosition * 4 * p.__length, fmt);
+										}
+									}
+									#end
+
+									context.drawTriangles(context.__quadIndexBuffer, firstIndex, length * 2);
 
 									shaderBufferOffset += length * 4;
 									quadBufferPosition += length;
@@ -1174,6 +1303,9 @@ class Context3DGraphics
 							renderDrawTriangles(vertices.length, indices != null ? indices.length : 0, uvtData != null ? uvtData.length : 0, culling);
 
 						case END_FILL:
+							#if wiiu
+							streamShaderBuffer = null;
+							#end
 							bitmap = null;
 							bitmapMatrix = null;
 							fill = null;

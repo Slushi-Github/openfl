@@ -130,6 +130,47 @@ class Context3DBuffer
 		}
 		#end
 	}
+
+	#if wiiu
+	public var attribStreams:Map<String, Context3DAttribStream>;
+
+	public function ensureStream(name:String, size:Int, totalVertices:Int):Context3DAttribStream
+	{
+		if (attribStreams == null) attribStreams = new Map();
+		var s = attribStreams.get(name);
+		if (s == null)
+		{
+			s = new Context3DAttribStream(size);
+			attribStreams.set(name, s);
+		}
+		var len = totalVertices * size;
+		if (s.data == null)
+		{
+			s.data = new Float32Array(len);
+		}
+		else if (len > s.data.length)
+		{
+			var old = s.data;
+			s.data = new Float32Array(len);
+			s.data.set(old);
+		}
+		return s;
+	}
+
+	public function flushStreams():Void
+	{
+		if (attribStreams == null) return;
+		for (s in attribStreams)
+		{
+			if (s.data.length > s.count)
+			{
+				s.count = s.data.length;
+				s.buffer = context3D.createVertexBuffer(s.count, s.size, DYNAMIC_DRAW);
+			}
+			s.buffer.uploadFromTypedArray(s.data);
+		}
+	}
+	#end
 }
 
 enum Context3DElementType
@@ -138,4 +179,19 @@ enum Context3DElementType
 	TRIANGLES;
 	TRIANGLE_INDICES;
 }
+
+#if wiiu
+class Context3DAttribStream
+{
+	public var size:Int;
+	public var data:Float32Array;
+	public var buffer:VertexBuffer3D;
+	public var count:Int = 0;
+
+	public function new(size:Int)
+	{
+		this.size = size;
+	}
+}
+#end
 #end
