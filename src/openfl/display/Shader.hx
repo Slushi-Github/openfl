@@ -818,7 +818,21 @@ class Shader
 
 		for (parameter in __paramBool)
 		{
+			#if wiiu
+			if (parameter.__isUniform)
+			{
+				if (parameter.value != null && parameter.value.length > 0)
+				{
+					__context.gl.uniform1f(parameter.index, parameter.value[0] ? 1.0 : 0.0);
+				}
+			}
+			else
+			{
+				parameter.__updateGL(__context);
+			}
+			#else
 			parameter.__updateGL(__context);
+			#end
 		}
 
 		for (parameter in __paramFloat)
@@ -913,11 +927,34 @@ class Shader
 
 				if (hasOverride)
 				{
+					#if wiiu
+					if (boolRef.__isUniform)
+					{
+						__context.gl.uniform1f(boolRef.index, (overrideBoolValue != null && overrideBoolValue[0]) ? 1.0 : 0.0);
+					}
+					else
+					{
+						boolRef.__updateGL(__context, overrideBoolValue);
+					}
+					#else
 					boolRef.__updateGL(__context, overrideBoolValue);
+					#end
 				}
 				else
 				{
+					#if wiiu
+					if (boolRef.__isUniform)
+					{
+						var pos = shaderBuffer.paramPositions[i];
+						__context.gl.uniform1f(boolRef.index, paramData[pos] != 0 ? 1.0 : 0.0);
+					}
+					else
+					{
+						boolRef.__updateGLFromBuffer(__context, paramData, shaderBuffer.paramPositions[i], shaderBuffer.paramLengths[i], bufferOffset);
+					}
+					#else
 					boolRef.__updateGLFromBuffer(__context, paramData, shaderBuffer.paramPositions[i], shaderBuffer.paramLengths[i], bufferOffset);
+					#end
 				}
 
 				boolIndex++;

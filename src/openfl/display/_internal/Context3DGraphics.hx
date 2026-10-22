@@ -636,10 +636,6 @@ class Context3DGraphics
 					data.skip(type);
 
 				case BEGIN_SHADER_FILL:
-					#if wiiu
-					var c = data.readBeginShaderFill();
-					streamShaderBuffer = c.shaderBuffer;
-					#end
 					hasBitmapFill = false;
 					hasColorFill = false;
 					hasShaderFill = true;
@@ -1063,6 +1059,90 @@ class Context3DGraphics
 									renderer.updateShader();
 								}
 
+								#if wiiu
+								if (shaderBuffer != null && !maskRender && graphics.__quadBuffer != null)
+								{
+									var totalQuads = length;
+									var totalVertices = (quadBufferPosition + totalQuads) * 4;
+									var anyStream = false;
+
+									for (k in 0...shaderBuffer.paramBoolCount)
+									{
+										var p = shaderBuffer.paramRefs_Bool[k];
+										if (p == null || p.__isUniform || p.__internal) continue;
+
+										var size = p.__length;
+										var stream = graphics.__quadBuffer.ensureStream(p.name, size, totalVertices);
+										var sData = stream.data;
+
+										var pIndex = k;
+										var pLen = shaderBuffer.paramLengths[pIndex];
+										var pPos = shaderBuffer.paramPositions[pIndex];
+
+										var dst = quadBufferPosition * 4 * size;
+										var src = pPos + shaderBufferOffset * size;
+										var n = totalQuads * 4 * size;
+										if (pLen >= shaderBufferOffset * size + n) for (i in 0...n)
+											sData[dst + i] = shaderBuffer.paramData[src + i];
+										else if (pLen == size) for (i in 0...n)
+											sData[dst + i] = shaderBuffer.paramData[pPos + (i % size)];
+										else
+											for (i in 0...n)
+												sData[dst + i] = 0;
+
+										if (p.name == "colorMultiplier")
+										{
+											var q = 0;
+											var totalVerts = totalQuads * 4;
+											while (q < totalVerts)
+											{
+												var idx = dst + q * 4;
+												if (sData[idx] == 0 && sData[idx + 1] == 0 && sData[idx + 2] == 0 && sData[idx + 3] == 0)
+												{
+													sData[idx] = 1.0;
+													sData[idx + 1] = 1.0;
+													sData[idx + 2] = 1.0;
+													sData[idx + 3] = 1.0;
+												}
+												q++;
+											}
+										}
+
+										anyStream = true;
+									}
+
+									for (k in 0...shaderBuffer.paramFloatCount)
+									{
+										var p = shaderBuffer.paramRefs_Float[k];
+										if (p == null || p.__isUniform || p.__internal) continue;
+
+										var size = p.__length;
+										var stream = graphics.__quadBuffer.ensureStream(p.name, size, totalVertices);
+										var sData = stream.data;
+
+										var pIndex = shaderBuffer.paramBoolCount + k;
+										var pLen = shaderBuffer.paramLengths[pIndex];
+										var pPos = shaderBuffer.paramPositions[pIndex];
+
+										var dst = quadBufferPosition * 4 * size;
+										var src = pPos + shaderBufferOffset * size;
+										var n = totalQuads * 4 * size;
+
+										if (pLen >= shaderBufferOffset * size + n) for (i in 0...n)
+											sData[dst + i] = shaderBuffer.paramData[src + i];
+										else if (pLen == size) for (i in 0...n)
+											sData[dst + i] = shaderBuffer.paramData[pPos + (i % size)];
+										else
+											for (i in 0...n)
+												sData[dst + i] = 0;
+
+										anyStream = true;
+									}
+
+									if (anyStream) graphics.__quadBuffer.flushStreams();
+								}
+								#end
+
 								var end = quadBufferPosition + length;
 
 								while (quadBufferPosition < end)
@@ -1081,56 +1161,7 @@ class Context3DGraphics
 										#end
 									}
 
-									#if wiiu
-									var activeSB = (streamShaderBuffer != null) ? streamShaderBuffer : shaderBuffer;
-
-									if (graphics.__quadBuffer != null
-										&& graphics.__quadBuffer.attribStreams != null
-										&& activeSB != null
-										&& activeSB.shader != null
-										&& activeSB.shader.__paramFloat != null)
-									{
-										var sb = activeSB;
-										var floatParams = sb.shader.__paramFloat;
-										var totalVertices = (quadBufferPosition + length) * 4;
-
-										for (k in 0...floatParams.length)
-										{
-											var p = floatParams[k];
-											if (p == null || p.__isUniform || p.__internal) continue;
-
-											trace("Parámetro flotante detectado: " + p.name + " (longitud: " + p.__length + ")");
-
-											var size = p.__length;
-											var stream = graphics.__quadBuffer.ensureStream(p.name, size, totalVertices);
-											if (stream == null || stream.data == null) continue;
-
-											var sData = stream.data;
-											var pIndex = sb.paramBoolCount + k;
-											var pLen = sb.paramLengths[pIndex];
-											var pPos = sb.paramPositions[pIndex];
-											var base = quadBufferPosition * 4 * size;
-											var n = length * 4 * size;
-
-											if (pLen >= n)
-											{
-												for (i in 0...n)
-													sData[base + i] = sb.paramData[pPos + i];
-											}
-											else if (pLen == size)
-											{
-												for (i in 0...n)
-													sData[base + i] = sb.paramData[pPos + (i % size)];
-											}
-											else
-											{
-												for (i in 0...n)
-													sData[base + i] = 0;
-											}
-										}
-									}
-									#end
-
+									
 									#if wiiu
 									var useFirstIndex = (quadBufferPosition + length) <= context.__quadIndexBufferElements;
 									var ptrBase = useFirstIndex ? 0 : quadBufferPosition * 16;
@@ -1150,30 +1181,58 @@ class Context3DGraphics
 										&& graphics.__quadBuffer.attribStreams != null
 										&& shaderBuffer != null
 										&& shaderBuffer.shader != null
-										&& shaderBuffer.shader.__paramFloat != null
 										&& !maskRender)
 									{
-										var fParams = shaderBuffer.shader.__paramFloat;
-										for (k in 0...fParams.length)
+										if (shaderBuffer.shader.__paramBool != null)
 										{
-											var p = fParams[k];
-											if (p == null || p.__isUniform || p.__internal) continue;
-
-											var idx:Int = p.index;
-											if (idx < 0) continue;
-
-											var stream = graphics.__quadBuffer.attribStreams.get(p.name);
-											if (stream == null || stream.buffer == null) continue;
-
-											var fmt = switch (p.__length)
+											var bParams = shaderBuffer.shader.__paramBool;
+											for (k in 0...bParams.length)
 											{
-												case 1: Context3DVertexBufferFormat.FLOAT_1;
-												case 2: Context3DVertexBufferFormat.FLOAT_2;
-												case 3: Context3DVertexBufferFormat.FLOAT_3;
-												default: Context3DVertexBufferFormat.FLOAT_4;
-											};
+												var p = bParams[k];
+												if (p == null || p.__isUniform || p.__internal) continue;
 
-											context.setVertexBufferAt(idx, stream.buffer, useFirstIndex ? 0 : quadBufferPosition * 4 * p.__length, fmt);
+												var idx:Int = p.index;
+												if (idx < 0) continue;
+
+												var stream = graphics.__quadBuffer.attribStreams.get(p.name);
+												if (stream == null || stream.buffer == null) continue;
+
+												var fmt = switch (p.__length)
+												{
+													case 1: Context3DVertexBufferFormat.FLOAT_1;
+													case 2: Context3DVertexBufferFormat.FLOAT_2;
+													case 3: Context3DVertexBufferFormat.FLOAT_3;
+													default: Context3DVertexBufferFormat.FLOAT_4;
+												};
+
+												context.setVertexBufferAt(idx, stream.buffer, useFirstIndex ? 0 : quadBufferPosition * 4 * p.__length, fmt);
+											}
+										}
+
+										if (shaderBuffer.shader.__paramFloat != null)
+										{
+											var fParams = shaderBuffer.shader.__paramFloat;
+											for (k in 0...fParams.length)
+											{
+												var p = fParams[k];
+												if (p == null || p.__isUniform || p.__internal) continue;
+
+												var idx:Int = p.index;
+												if (idx < 0) continue;
+
+												var stream = graphics.__quadBuffer.attribStreams.get(p.name);
+												if (stream == null || stream.buffer == null) continue;
+
+												var fmt = switch (p.__length)
+												{
+													case 1: Context3DVertexBufferFormat.FLOAT_1;
+													case 2: Context3DVertexBufferFormat.FLOAT_2;
+													case 3: Context3DVertexBufferFormat.FLOAT_3;
+													default: Context3DVertexBufferFormat.FLOAT_4;
+												};
+
+												context.setVertexBufferAt(idx, stream.buffer, useFirstIndex ? 0 : quadBufferPosition * 4 * p.__length, fmt);
+											}
 										}
 									}
 									#end

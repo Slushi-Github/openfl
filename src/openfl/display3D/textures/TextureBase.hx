@@ -282,7 +282,7 @@ class TextureBase extends EventDispatcher
 		#if wiiu
 		__supportsBGRA = false;
 		__textureFormat = gl.RGBA;
-		__textureInternalFormat = 0x8058; // GL_RGBA8, como en tu renderer
+		__textureInternalFormat = 0x8058; // GL_RGBA8
 		#end
 
 		__compressedFormats = new Map();

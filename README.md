@@ -1,3 +1,13 @@
+# OpenFL for the Nintendo Wii U!
+
+This is a fork of OpenFL based on commit `730f3f8` from 11/10/2026.
+
+It includes modifications to support rendering via [gx2gl](https://github.com/ExpansionPak/gx2gl) on the Wii U. This is a highly experimental port, and many things may not work or may not behave like a typical Lime target.
+
+To use it, you'll need [Lime-Cafe](https://github.com/Slushi-Github/lime-cafe)
+
+-----
+
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE.md) [![Haxelib Version](https://img.shields.io/github/tag/openfl/openfl.svg?style=flat&label=haxelib&color=df7900)](https://lib.haxe.org/p/openfl) [![Build Status](https://img.shields.io/github/actions/workflow/status/openfl/openfl/main.yml?branch=develop)](https://github.com/openfl/openfl/actions) [![Community](https://img.shields.io/discourse/posts?color=24afc4&server=https%3A%2F%2Fcommunity.openfl.org&label=community)](https://community.openfl.org) [![Discord Server](https://img.shields.io/discord/415681294446493696.svg?color=7289da)](https://discordapp.com/invite/tDgq8EE)
 
 
