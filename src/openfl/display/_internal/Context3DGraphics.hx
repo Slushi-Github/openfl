@@ -54,6 +54,19 @@ class Context3DGraphics
 	private static var streamShaderBuffer:ShaderBuffer = null;
 	#end
 
+	#if wiiu
+	private static var colorBitmaps = new Map<Int, BitmapData>();
+
+	private static function getColorBitmap(color:Int):BitmapData
+	{
+		if (!colorBitmaps.exists(color))
+		{
+			colorBitmaps.set(color, new BitmapData(1, 1, true, color));
+		}
+		return colorBitmaps.get(color);
+	}
+	#end
+
 	private static function buildBuffer(graphics:Graphics, renderer:OpenGLRenderer):Void
 	{
 		var quadBufferPosition = 0;
@@ -587,7 +600,7 @@ class Context3DGraphics
 	{
 		#if (openfl_force_sw_graphics || force_sw_graphics)
 		return false;
-		#elseif (openfl_force_hw_graphics || force_hw_graphics)
+		#elseif (openfl_force_hw_graphics || force_hw_graphics || wiiu)
 		return true;
 		#end
 
@@ -673,7 +686,7 @@ class Context3DGraphics
 					}
 
 				case DRAW_TRIANGLES:
-					if (!hasDrawnComplex && tempRects.length == 0 && (hasColorFill || hasBitmapFill || hasShaderFill))
+					if (#if !wiiu !hasDrawnComplex && #end tempRects.length == 0 && (hasColorFill || hasBitmapFill || hasShaderFill))
 					{
 						hasDrawnComplex = true;
 						data.skip(type);
@@ -870,6 +883,13 @@ class Context3DGraphics
 							shader = maskRender ? renderer.__maskShader : renderer.__initGraphicsShader(null);
 							renderer.setShader(shader);
 							renderer.applyMatrix(uMatrix);
+
+							#if wiiu
+							var colorTex = getColorBitmap(fill);
+							renderer.applyBitmapData(colorTex, false, repeat);
+							renderer.applyAlpha(graphics.__owner.__worldAlpha);
+							renderer.applyColorTransform(graphics.__owner.__worldColorTransform);
+							#else
 							renderer.applyBitmapData(blankBitmapData, true, repeat);
 							#if lime
 							var color:ARGB = (fill : ARGB);
@@ -883,13 +903,22 @@ class Context3DGraphics
 							renderer.applyAlpha(graphics.__owner.__worldAlpha);
 							renderer.applyColorTransform(graphics.__owner.__worldColorTransform);
 							#end
+							#end
+
 							renderer.updateShader();
 						}
 
+						#if wiiu
+						var startVertex = Std.int(bufferPosition / dataPerVertex);
+
+						if (shader.__position != null) context.setVertexBufferAt(shader.__position.index, vertexBuffer, 0, hasUVTData ? FLOAT_4 : FLOAT_2);
+						if (shader.__textureCoord != null) context.setVertexBufferAt(shader.__textureCoord.index, vertexBuffer, vertLength, FLOAT_2);
+						#else
 						if (shader.__position != null) context.setVertexBufferAt(shader.__position.index, vertexBuffer, bufferPosition,
 							hasUVTData ? FLOAT_4 : FLOAT_2);
 						if (shader.__textureCoord != null) context.setVertexBufferAt(shader.__textureCoord.index, vertexBuffer, bufferPosition + vertLength,
 							FLOAT_2);
+						#end
 
 						switch (culling)
 						{
@@ -905,7 +934,11 @@ class Context3DGraphics
 							default:
 						}
 
+						#if wiiu
+						context.__drawTriangles(startVertex, length);
+						#else
 						context.__drawTriangles(0, length);
+						#end
 
 						shaderBufferOffset += length;
 						if (hasUVTData)

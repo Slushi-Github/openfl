@@ -101,6 +101,10 @@ import js.html.CanvasRenderingContext2D;
 	@:noCompletion private var __bitmapScaleX:Float;
 	@:noCompletion private var __bitmapScaleY:Float;
 
+	#if wiiu
+	private var __wiiuPathPoints:Array<Float> = [];
+	#end
+
 	@:noCompletion private function new(owner:DisplayObject)
 	{
 		__owner = owner;
@@ -1160,6 +1164,28 @@ import js.html.CanvasRenderingContext2D;
 	**/
 	public function endFill():Void
 	{
+		#if wiiu
+		var numVerts = Std.int(__wiiuPathPoints.length / 2);
+		if (numVerts >= 3)
+		{
+			var vertices = new openfl.Vector<Float>(__wiiuPathPoints.length);
+			for (i in 0...__wiiuPathPoints.length)
+				vertices[i] = __wiiuPathPoints[i];
+
+			var indices = new openfl.Vector<Int>((numVerts - 2) * 3);
+			var idx = 0;
+			for (i in 1...numVerts - 1)
+			{
+				indices[idx++] = 0;
+				indices[idx++] = i;
+				indices[idx++] = i + 1;
+			}
+
+			drawTriangles(vertices, indices);
+		}
+		__wiiuPathPoints = [];
+		#end
+
 		__commands.endFill();
 	}
 
@@ -1542,6 +1568,11 @@ import js.html.CanvasRenderingContext2D;
 		__inflateBounds(__positionX - __strokePadding, __positionY - __strokePadding);
 		__inflateBounds(__positionX + __strokePadding * 2, __positionY + __strokePadding);
 
+		#if wiiu
+		__wiiuPathPoints.push(x);
+		__wiiuPathPoints.push(y);
+		#end
+
 		__commands.lineTo(x, y);
 
 		__dirty = true;
@@ -1561,6 +1592,11 @@ import js.html.CanvasRenderingContext2D;
 	{
 		__positionX = x;
 		__positionY = y;
+
+		#if wiiu
+		__wiiuPathPoints = [x, y];
+		#end
+
 
 		__commands.moveTo(x, y);
 	}
