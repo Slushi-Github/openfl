@@ -131,7 +131,7 @@ class TextLayout
 		#end
 	}
 
-	#if wiiu
+	#if (wiiu && !macro)
 	@:noCompletion private inline function __swap32(v:Int):Int
 	{
 		return untyped __cpp__("__builtin_bswap32({0})", v);

@@ -1268,10 +1268,13 @@ import lime.math.Vector2;
 		__bindGLElementArrayBuffer(indexBuffer.__id);
 		gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, firstIndex * 2);
 
-		#if wiiu
-		var err = gl.getError();
-		if (err != 0) trace("[GL] error 0x" + StringTools.hex(err) + " after draw");
-		#end
+		// #if wiiu
+		// var lastError = null;
+		// var err = gl.getError();
+		// lastError = err;
+
+		// if (err != 0 && lastError != err) trace("[GL] error 0x" + StringTools.hex(err) + " after draw");
+		// #end
 	}
 
 	/**
